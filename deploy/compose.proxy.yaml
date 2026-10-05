@@ -1,0 +1,9 @@
+# Compose 2.24.4+; attach only to your existing reverse-proxy network.
+services:
+  ambulator:
+    ports: !reset []
+    networks: [edge]
+networks:
+  edge:
+    external: true
+    name: ${PROXY_NETWORK:-edge}

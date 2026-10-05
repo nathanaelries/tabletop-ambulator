@@ -1,44 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Companion for people to play-along Tabletop Simulator"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
-
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>Tabletop Ambulator</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
-
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-  </body>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#122d2b"><title>Ambulator · Your table, together</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="/" aria-label="Ambulator home"><span class="brand-icon">A</span> AMBULATOR</a><span class="header-note">TABLETOP, TOGETHER</span></header>
+  <main>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section id="home" class="welcome">
+      <div class="intro"><span class="eyebrow">A PHONE COMPANION FOR TABLETOP SIMULATOR</span><h1>One table.<br>A hand for<br><em>everyone.</em></h1><p>Keep the board on the big screen.<br>Your cards belong on your phone.</p><div class="table-art" aria-hidden="true"><span>01</span><span>02</span><span>03</span><i>THE TABLE IS OPEN</i></div></div>
+      <div class="entry-panel">
+        <span class="eyebrow">TAKE YOUR SEAT</span><h2>Join your friends</h2><p>Enter the room code from your host.</p>
+        <form id="join-form"><label for="room-code">Room code</label><input id="room-code" name="code" maxlength="6" placeholder="ABC234" autocomplete="off" autocapitalize="characters" required pattern="[A-HJ-NP-Za-hj-np-z2-9]{6}"><label for="player-name">Your name</label><input id="player-name" name="name" maxlength="48" autocomplete="nickname" placeholder="What should we call you?" required><button type="submit">Join room <span>↗</span></button></form>
+        <div class="divider"><span>SETTING UP THE TABLE?</span></div>
+        <details id="host-details"><summary>Host a room <span>+</span></summary><form id="host-form"><label for="host-key">Host key</label><input id="host-key" type="password" autocomplete="current-password" required minlength="32" placeholder="Your server’s host key"><button type="submit" class="secondary">Create room <span>↗</span></button></form></details>
+      </div>
+    </section>
+    <section id="room" hidden>
+      <div class="room-heading"><div><span class="eyebrow" id="room-subtitle">YOUR TABLE</span><h1 id="room-title">The room</h1></div><div class="room-badge"><span>ROOM CODE</span><strong id="code-display"></strong><button id="copy-link" class="text-button">Copy invite link ↗</button></div></div>
+      <div class="connection"><span id="connection-dot"></span><span id="connection-text">Connecting…</span><span id="seat-status"></span></div>
+      <div id="host-view" hidden>
+        <div class="host-grid">
+          <section class="panel"><div class="panel-heading"><span class="eyebrow">01 / CONNECT THE BOARD</span><h2>Bring in your table</h2></div><p>Load your game in Tabletop Simulator, then import the companion object into the same table.</p><button id="download-object">Download TTS object <span>↓</span></button><details class="script-details"><summary>Or copy the object’s Lua script</summary><button id="copy-script" class="secondary" disabled>Copy generated script</button><p>Generate an object first. Paste the script on a separate object, then Save &amp; Play.</p></details><p class="muted">Generating another object replaces the previous connection. Keep the downloaded object private.</p><button id="revoke-bridge" class="text-button danger">Disconnect TTS</button></section>
+          <section class="panel"><div class="panel-heading"><span class="eyebrow">02 / WELCOME YOUR PLAYERS</span><h2>A seat for everyone</h2></div><p>Share the invite link. Approve each player’s color to give them their own cards.</p><div id="players"></div><button id="lock-room" class="secondary">Lock room</button></section>
+        </div>
+        <section class="panel settings"><div class="panel-heading"><span class="eyebrow">03 / MATCH YOUR GAME</span><h2>Hands &amp; draw decks</h2></div><p>Check which hand contains train cards and which contains tickets. Play and draw controls start disabled. Enable them once you have checked each hand.</p><form id="settings-form"><div id="settings-fields"></div><button type="submit" class="secondary">Save hand settings</button></form><div id="zone-summary" class="muted"></div></section>
+        <div class="room-footer"><span>Put Tabletop Simulator on the shared screen.</span><button id="close-room" class="text-button danger">Close room</button></div>
+      </div>
+      <div id="player-view" hidden>
+        <section id="seat-panel" class="panel"><span class="eyebrow">FIND YOUR COLOR</span><h2 id="seat-heading">Choose a seat</h2><p id="seat-instructions">Your host will approve the seat before your cards appear.</p><form id="seat-form"><label for="seat-color">Player color</label><select id="seat-color"></select><button type="submit">Request seat <span>↗</span></button></form></section>
+        <nav id="hand-tabs" aria-label="Your hands"></nav><div id="hand-content"></div><div id="draw-controls"></div>
+        <div class="room-footer"><span>Your hand stays with your seat.</span><button id="leave-room" class="text-button">Leave room</button></div>
+      </div>
+    </section>
+  </main>
+  <footer><span>AMBULATOR / COMMUNITY FORK</span><span>Gather around. Take your turn.</span></footer>
+  <dialog id="card-dialog"><button id="close-card" class="dialog-close" aria-label="Close card">×</button><div id="card-preview"></div><h2 id="card-name"></h2><p id="card-zone" class="muted"></p><div class="card-actions"><button id="highlight-card" class="secondary">Highlight on table</button><button id="play-card">Play to table</button></div><p id="card-pending" class="muted"></p></dialog>
+  <dialog id="confirm-dialog"><h2 id="confirm-title"></h2><p id="confirm-text"></p><div class="card-actions"><button id="cancel-confirm" class="secondary">Cancel</button><button id="accept-confirm">Continue</button></div></dialog>
+</body>
 </html>

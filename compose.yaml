@@ -1,0 +1,30 @@
+services:
+  ambulator:
+    build: .
+    image: rightofway-ambulator:local
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
+      MAX_ROOMS: ${MAX_ROOMS:-100}
+      ROOM_TTL_HOURS: ${ROOM_TTL_HOURS:-48}
+      ASSET_HOSTS: ${ASSET_HOSTS:-steamusercontent.com,*.steamusercontent.com,steamusercontent-a.akamaihd.net,i.imgur.com,raw.githubusercontent.com}
+    secrets: [host_key]
+    ports: ["127.0.0.1:${APP_PORT:-3001}:3001"]
+    volumes: [room_data:/app/data]
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+secrets:
+  host_key:
+    file: ${HOST_KEY_PATH:-./secrets/host_key.txt}
+volumes:
+  room_data:

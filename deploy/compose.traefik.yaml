@@ -1,0 +1,10 @@
+services:
+  ambulator:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${PROXY_NETWORK:-edge}
+      traefik.http.routers.ambulator.rule: Host(`${GAME_DOMAIN:?Set GAME_DOMAIN in .env}`)
+      traefik.http.routers.ambulator.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.ambulator.tls: "true"
+      traefik.http.routers.ambulator.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.services.ambulator.loadbalancer.server.port: "3001"

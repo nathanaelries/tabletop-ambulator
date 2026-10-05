@@ -1,50 +1,26 @@
 {
-  "name": "tabletop-ambulator",
-  "version": "0.1.0",
+  "name": "rightofway-ambulator",
+  "version": "0.2.0",
   "private": true,
-  "proxy": "http://localhost:8000",
-  "dependencies": {
-    "@material-ui/core": "^4.9.12",
-    "@material-ui/icons": "^4.9.1",
-    "@testing-library/jest-dom": "^4.2.4",
-    "@testing-library/react": "^9.3.2",
-    "@testing-library/user-event": "^7.1.2",
-    "cached-request": "^2.0.1",
-    "express": "^4.17.1",
-    "http": "^0.0.1-security",
-    "http-delayed-response": "^0.0.4",
-    "pg": "^8.0.3",
-    "pg-hstore": "^2.3.3",
-    "pure-react-carousel": "^1.27.1",
-    "randomatic": "^3.1.1",
-    "react": "^16.13.1",
-    "react-dom": "^16.13.1",
-    "react-scripts": "3.4.1",
-    "request": "^2.88.2",
-    "sequelize": "^5.21.7",
-    "sequelize-cli": "^5.5.1",
-    "sharp": "^0.25.2",
-    "websocket": "^1.0.31"
+  "type": "module",
+  "license": "MIT",
+  "description": "A private self-hosted phone companion for Tabletop Simulator",
+  "engines": {
+    "node": ">=24"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs",
+    "setup": "node scripts/setup.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node test/browser.mjs",
+    "test:lua": "lua test/bridge.test.lua",
+    "check": "node --check server/index.mjs && node --check server/rooms.mjs && node --check public/app.js"
   },
-  "eslintConfig": {
-    "extends": "react-app"
+  "dependencies": {
+    "ws": "^8.18.3"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

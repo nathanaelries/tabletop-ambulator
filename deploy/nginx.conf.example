@@ -1,0 +1,13 @@
+# Add inside your existing HTTPS server block.
+location / {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 75s;
+    proxy_send_timeout 75s;
+    proxy_buffering off;
+    client_max_body_size 512k;
+}
+# If nginx runs in Docker on the shared proxy network, use ambulator:3001.
