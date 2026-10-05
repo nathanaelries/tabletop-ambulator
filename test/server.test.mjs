@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { createApp } from '../server/index.mjs';
-import { HOST_KEY, snapshot } from './fixtures.mjs';
+import { HOST_KEY, snapshot, controlSnapshot } from './fixtures.mjs';
 
 async function fixture(t, settings = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'ambulator-test-'));
@@ -225,4 +225,70 @@ test('a failed snapshot write stops access instead of exposing an unpersisted ro
   assert.equal((await f.request(f.path, undefined, f.host)).status, 503);
   assert.equal((await f.request('/healthz')).status, 503);
   f.app.store.persist = save;
+});
+
+const controlSettings = () => ({ zones: { 1: { label: 'Trains', play: true }, 2: { label: 'Tickets', play: false } }, enabledDecks: {},
+  enabledTargets: { 'global:1': { zone: 2, faceDown: true } }, enabledButtons: { 'e00001:0': { colors: ['Red'], label: 'Request tickets' } } });
+
+test('batches validate every card before enqueue, reject overlaps, and cancel if one card moves', async t => {
+  const f = await fixture(t), red = await f.player('Ada', 'Red'); await f.sync(controlSnapshot());
+  for (const [guids, status] of [[[], 400], [['a00001', 'a00001'], 400], [Array(31).fill('a00001'), 400], [['a00001', 'b00001'], 403], [['a00001', 'a00002'], 403]]) {
+    assert.equal((await f.request(f.path + '/action', { kind: 'play', zone: 1, guids }, red.cookie)).status, status);
+    assert.equal(f.app.store.get(f.code).commands.length, 0);
+  }
+  assert.equal((await f.request(f.path + '/action', { kind: 'play', zone: 1, guids: ['a00001', 'a00003'] }, red.cookie)).status, 202);
+  assert.equal((await f.request(f.path + '/action', { kind: 'play', zone: 1, guid: 'a00003' }, red.cookie)).status, 409);
+  const update = controlSnapshot(), response = await f.sync(update);
+  assert.deepEqual(response.data.commands[0].guids, ['a00001', 'a00003']);
+  update.hands.Red[0].cards.pop(); assert.deepEqual((await f.sync(update)).data.commands, []);
+});
+
+test('destinations require approval and live color restrictions; the server chooses orientation', async t => {
+  const f = await fixture(t), red = await f.player('Ada', 'Red'), blue = await f.player('Bo', 'Blue'); await f.sync(controlSnapshot());
+  const place = { kind: 'place', zone: 2, guid: 'a00002', targetId: 'global:1' };
+  assert.equal((await f.request(f.path + '/action', place, red.cookie)).status, 403);
+  assert.equal((await f.request(f.path + '/configure', controlSettings(), f.host)).status, 200);
+  assert.equal((await f.request(f.path + '/action', { ...place, faceDown: false }, red.cookie)).status, 403);
+  assert.equal((await f.request(f.path + '/action', { ...place, zone: 1 }, red.cookie)).status, 403);
+  assert.equal((await f.request(f.path + '/action', { ...place, guid: 'b00002' }, blue.cookie)).status, 403);
+  assert.equal((await f.request(f.path + '/action', place, red.cookie)).status, 202);
+  const response = await f.sync(controlSnapshot()); assert.equal(response.data.commands[0].faceDown, true); assert.equal(response.data.commands[0].signature, 'target-v1');
+  const changed = controlSnapshot(); changed.targets[0].signature = 'target-moved';
+  assert.deepEqual((await f.sync(changed)).data.commands, []);
+  assert.deepEqual((await f.request(f.path, undefined, red.cookie)).data.targets, []);
+});
+
+test('button permissions require an adapter, filter player views, and reject spoofed or stale actions', async t => {
+  const f = await fixture(t), red = await f.player('Ada', 'Red'), blue = await f.player('Bo', 'Blue'); await f.sync(controlSnapshot());
+  const invalid = controlSettings(); invalid.enabledButtons['e00002:0'] = { colors: ['Red'] };
+  assert.equal((await f.request(f.path + '/configure', invalid, f.host)).status, 400);
+  const wrongColor = controlSettings(); wrongColor.enabledButtons['e00001:0'].colors = ['Blue'];
+  assert.equal((await f.request(f.path + '/configure', wrongColor, f.host)).status, 400);
+  await f.request(f.path + '/configure', controlSettings(), f.host);
+  const redView = (await f.request(f.path, undefined, red.cookie)).data, blueView = (await f.request(f.path, undefined, blue.cookie)).data;
+  assert.deepEqual(redView.buttons, [{ id: 'e00001:0', label: 'Request tickets' }]); assert.deepEqual(blueView.buttons, []); assert.deepEqual(blueView.targets, []);
+  assert.ok(!JSON.stringify(redView).includes('button-v1'));
+  const press = { kind: 'button', buttonId: 'e00001:0' };
+  assert.equal((await f.request(f.path + '/action', press, blue.cookie)).status, 403);
+  assert.equal((await f.request(f.path + '/action', { ...press, callback: 'arbitrary' }, red.cookie)).status, 403);
+  assert.equal((await f.request(f.path + '/action', press, red.cookie)).status, 202);
+  assert.equal((await f.request(f.path + '/action', press, red.cookie)).status, 409);
+  const response = await f.sync(controlSnapshot()); assert.equal(response.data.commands[0].color, 'Red');
+  const changed = controlSnapshot(); changed.buttons[0].signature = 'different-callback';
+  assert.deepEqual((await f.sync(changed)).data.commands, []);
+  assert.equal((await f.request(f.path + '/action', press, red.cookie)).status, 403);
+});
+
+test('invalid controls do not replace private state; only approvals survive a restart', async t => {
+  const f = await fixture(t), red = await f.player('Ada', 'Red'); await f.sync(controlSnapshot()); await f.request(f.path + '/configure', controlSettings(), f.host);
+  for (const mutate of [s => s.targets.push(s.targets[0]), s => s.buttons[0].colors = ['Black'], s => s.targets[0].id = ['global:1']]) {
+    const invalid = controlSnapshot(); invalid.hands.Red[0].cards = []; mutate(invalid);
+    assert.equal((await f.sync(invalid)).status, 400);
+    assert.equal((await f.request(f.path, undefined, red.cookie)).data.hands[0].cards.length, 2);
+  }
+  await f.restart(); const room = f.app.store.get(f.code);
+  assert.deepEqual(room.targets, []); assert.deepEqual(room.buttons, []); assert.equal(room.enabledTargets['global:1'].faceDown, true);
+  assert.equal(room.enabledButtons['e00001:0'].label, 'Request tickets');
+  assert.deepEqual((await f.request(f.path, undefined, red.cookie)).data.buttons, []);
+  await f.sync(controlSnapshot()); assert.equal((await f.request(f.path, undefined, red.cookie)).data.buttons.length, 1);
 });

@@ -65,7 +65,22 @@ local function makePrivate(object)
     local guid = object.getGUID()
     privateObjects[guid] = privateObjects[guid] or transientObjects[guid] or originalFlags(object)
     transientObjects[guid] = nil
+    privateObjects[guid].returned = nil
     mask(object)
+end
+
+local function showReturned(object)
+    object.attachInvisibleHider(privacyId, false)
+    object.attachHider(privacyId, true)
+    object.tooltip = false
+end
+
+local function makeReturned(object)
+    local guid = object.getGUID()
+    privateObjects[guid] = privateObjects[guid] or transientObjects[guid] or originalFlags(object)
+    privateObjects[guid].returned = true
+    transientObjects[guid] = nil
+    if inAnyHand(guid) then makePrivate(object) else showReturned(object) end
 end
 
 local function reveal(object, flags)
@@ -86,9 +101,9 @@ local function quarantine(object)
     if not privacyReady or (object.tag ~= 'Card' and object.tag ~= 'CardCustom' and
         object.tag ~= 'Deck' and object.tag ~= 'DeckCustom') then return end
     local guid = object.getGUID()
-    if privateObjects[guid] then makePrivate(object); return end
+    if privateObjects[guid] and not privateObjects[guid].returned then makePrivate(object); return end
     if transientObjects[guid] then return end
-    local pending = originalFlags(object)
+    local pending = privateObjects[guid] or originalFlags(object)
     transientObjects[guid] = pending
     mask(object)
     -- Hide new cards before deal animations. Only settled public objects are
@@ -97,7 +112,12 @@ local function quarantine(object)
         Wait.condition(function()
             if transientObjects[guid] ~= pending then return end
             if object.isDestroyed() then transientObjects[guid] = nil; return end
-            if privateObjects[guid] or inAnyHand(guid) then makePrivate(object); return end
+            if inAnyHand(guid) then makePrivate(object); return end
+            if privateObjects[guid] then
+                transientObjects[guid] = nil
+                if privateObjects[guid].returned then showReturned(object) else mask(object) end
+                return
+            end
             local flags = transientObjects[guid]
             if flags then transientObjects[guid] = nil; reveal(object, flags) end
         end, function()
@@ -135,6 +155,73 @@ local function name(object, fallback)
     return value
 end
 
+local function controlColors(tags)
+    local colors = {}
+    for _, color in ipairs(Player.getColors()) do
+        if color ~= 'Grey' and color ~= 'Black' then
+            for _, tag in ipairs(tags or {}) do
+                if tag == 'AmbulatorFor:' .. color then table.insert(colors, color); break end
+            end
+        end
+    end
+    table.sort(colors)
+    return colors
+end
+
+local function permittedColor(control, color)
+    if #control.colors == 0 then return true end
+    for _, allowed in ipairs(control.colors) do if allowed == color then return true end end
+    return false
+end
+
+local function controls()
+    local targets, buttons, targetRefs, buttonRefs = {}, {}, {}, {}
+    local held = {}
+    handObjects(function(object) held[object.getGUID()] = true end)
+    local function snaps(owner, prefix)
+        for index, snap in ipairs(owner.getSnapPoints() or {}) do
+            if index <= 999 and #targets < 100 then
+                local label
+                for _, tag in ipairs(snap.tags or {}) do
+                    if tag:sub(1, 14) == 'AmbulatorDrop:' then label = tag:sub(15):gsub('[%c]', ' '):sub(1, 120) end
+                end
+                if label and label:match('%S') then
+                    local position = prefix == 'global' and snap.position or owner.positionToWorld(snap.position)
+                    local yaw = (snap.rotation and snap.rotation.y or 0) + (prefix == 'global' and 0 or owner.getRotation().y)
+                    local colors = controlColors(snap.tags)
+                    local id = prefix .. ':' .. index
+                    local signature = string.format('%.4f,%.4f,%.4f,%.4f', position.x, position.y, position.z, yaw) .. ':' .. label .. ':' .. table.concat(colors, ',')
+                    local target = { id = id, label = label, signature = signature, colors = colors }
+                    table.insert(targets, target); targetRefs[id] = { metadata = target, position = position, yaw = yaw }
+                end
+            end
+        end
+    end
+    snaps(Global, 'global')
+    for _, object in ipairs(getAllObjects()) do
+        local guid = object.getGUID()
+        if not privateObjects[guid] and not transientObjects[guid] and not held[guid] then
+            snaps(object, guid)
+            if not object.hasTag('AmbulatorHideButtons') then
+                local colors = controlColors(object.getTags())
+                for _, button in ipairs(object.getButtons() or {}) do
+                    if #buttons < 100 and button.index <= 999 and (button.width or 0) > 0 and (button.height or 0) > 0 and button.label and button.label:match('%S') and button.click_function and button.click_function:match('^[%a_][%w_]*$') then
+                        local owner = button.function_owner or Global
+                        local ownerId = owner == Global and 'global' or owner.getGUID()
+                        local label = button.label:gsub('[%c]', ' '):sub(1, 120)
+                        local ready = type(owner.getVar('ambulatorPressButton')) == 'function'
+                        local id = guid .. ':' .. button.index
+                        local signature = ownerId .. ':' .. button.click_function .. ':' .. label .. ':' .. table.concat(colors, ',') .. ':' .. tostring(ready)
+                        local metadata = { id = id, label = label, signature = signature, colors = colors, ready = ready }
+                        table.insert(buttons, metadata); buttonRefs[id] = { metadata = metadata, owner = owner, object = object, index = button.index }
+                    end
+                end
+            end
+        end
+    end
+    return targets, buttons, targetRefs, buttonRefs
+end
+
 local function snapshot()
     protectHands()
     local hands, decks, inHand = {}, {}, {}
@@ -168,7 +255,8 @@ local function snapshot()
         end
     end
     for _, object in ipairs(getAllObjects()) do
-        if (object.tag == 'Deck' or object.tag == 'DeckCustom') and not inHand[object.getGUID()] and not privateObjects[object.getGUID()] then
+        local flags = privateObjects[object.getGUID()]
+        if (object.tag == 'Deck' or object.tag == 'DeckCustom') and not inHand[object.getGUID()] and (not flags or flags.returned) then
             table.insert(decks, { guid = object.getGUID(), name = name(object, 'Deck ' .. object.getGUID()) })
         end
     end
@@ -191,9 +279,20 @@ end
 
 local function execute(command, permissions)
     if not approved(command.color, permissions.seats) then return end
-    local object = getObjectFromGUID(command.guid)
-    if not object then return end
+    if command.kind == 'button' then
+        local _, _, _, refs = controls()
+        local button = refs[command.buttonId]
+        local permission = (permissions.enabledButtons or {})[command.buttonId]
+        if not button or not button.metadata.ready or not permission or permission.signature ~= button.metadata.signature or command.signature ~= button.metadata.signature or not approved(command.color, permission.colors) or not permittedColor(button.metadata, command.color) then return end
+        button.owner.call('ambulatorPressButton', { objectGuid = button.object.getGUID(), index = button.index, color = command.color })
+        protectHands()
+        return
+    end
     if command.kind == 'draw' then
+        local object = getObjectFromGUID(command.guid)
+        if not object then return end
+        local flags = privateObjects[command.guid]
+        if transientObjects[command.guid] or (flags and not flags.returned) then return end
         local player = Player[command.color]
         if permissions.enabledDecks[command.guid] ~= command.zone or not player or
             command.zone > player.getHandCount() or command.zone < 1 then return end
@@ -212,8 +311,24 @@ local function execute(command, permissions)
         object.deal(1, command.color, command.zone)
         return
     end
-    if not ownsCard(command.color, command.zone, command.guid) then return end
-    if command.kind == 'play' then
+    if command.kind ~= 'play' and command.kind ~= 'place' then return end
+    local guids = command.guids or { command.guid }
+    if #guids == 0 or #guids > 30 then return end
+    local objects, seen = {}, {}
+    for _, guid in ipairs(guids) do
+        if seen[guid] or not ownsCard(command.color, command.zone, guid) then return end
+        local object = getObjectFromGUID(guid)
+        if not object then return end
+        seen[guid] = true; table.insert(objects, object)
+    end
+    local destination, yaw, faceDown
+    if command.kind == 'place' then
+        local _, _, refs = controls()
+        local target = refs[command.targetId]
+        local permission = (permissions.enabledTargets or {})[command.targetId]
+        if not target or not permission or permission.zone ~= command.zone or permission.signature ~= target.metadata.signature or command.signature ~= target.metadata.signature or permission.faceDown ~= command.faceDown or not permittedColor(target.metadata, command.color) then return end
+        destination = target.position; yaw = target.yaw; faceDown = permission.faceDown
+    else
         local zone = permissions.zones[tostring(command.zone)] or permissions.zones[command.zone]
         if not zone or zone.play ~= true then return end
         local hand = Player[command.color].getHandTransform(command.zone)
@@ -221,31 +336,40 @@ local function execute(command, permissions)
         -- Some mods have large hand volumes. A fixed offset can land back in
         -- the hand; use its depth plus clearance and move out directly.
         local distance = math.max(6, hand.scale.z + 2)
-        makePrivate(object)
-        publishing[command.guid] = true
-        object.setPosition({
+        destination = {
             x = hand.position.x + math.sin(rotation) * distance,
             y = hand.position.y + 1,
             z = hand.position.z + math.cos(rotation) * distance
-        })
-        if object.is_face_down then object.flip() end
+        }
+        yaw = hand.rotation.y; faceDown = false
+    end
+    -- Validate the whole batch before touching any card, then hide all cards
+    -- before moving/rotating them. Only the chosen public action releases them.
+    for _, object in ipairs(objects) do makePrivate(object) end
+    for index, object in ipairs(objects) do
+        local guid = object.getGUID()
+        publishing[guid] = { faceDown = faceDown }
+        local angle = yaw * math.pi / 180
+        local offset = (index - (#objects + 1) / 2) * 3
+        object.setPosition({ x = destination.x + math.cos(angle) * offset, y = destination.y + (command.kind == 'place' and 1 or 0), z = destination.z - math.sin(angle) * offset })
+        object.setRotation({ x = faceDown and 180 or 0, y = yaw, z = 0 })
         Wait.frames(function()
             Wait.condition(function()
                 if object.isDestroyed() then
-                    privateObjects[command.guid] = nil
-                    publishing[command.guid] = nil
+                    privateObjects[guid] = nil
+                    publishing[guid] = nil
                     return
                 end
-                local flags = privateObjects[command.guid]
+                local flags = privateObjects[guid]
                 if flags then
-                    privateObjects[command.guid] = nil
-                    publishing[command.guid] = nil
-                    reveal(object, flags)
+                    publishing[guid] = nil
+                    if faceDown then makeReturned(object)
+                    else privateObjects[guid] = nil; reveal(object, flags) end
                 end
             end, function()
-                return object.isDestroyed() or not inAnyHand(command.guid)
+                return object.isDestroyed() or not inAnyHand(guid)
             end, 5, function()
-                publishing[command.guid] = nil
+                publishing[guid] = nil
                 print('Ambulator: play position overlaps a hand; the card stays private.')
             end)
         end, 2)
@@ -267,9 +391,10 @@ end
 sync = function()
     if stopped or not session then return end
     local hands, decks = snapshot()
+    local targets, buttons = controls()
     sequence = sequence + 1
     local sentAcks = pendingAcks
-    request('sync', { session = session, sequence = sequence, hands = hands, decks = decks, acks = sentAcks }, function(response)
+    request('sync', { session = session, sequence = sequence, hands = hands, decks = decks, targets = targets, buttons = buttons, acks = sentAcks }, function(response)
         if stopped then return end
         local result = decode(response)
         if not result then
@@ -288,7 +413,7 @@ sync = function()
                 remember(command.id)
                 local ok = pcall(execute, command, result)
                 if not ok then
-                    publishing[command.guid] = nil
+                    for _, guid in ipairs(command.guids or { command.guid }) do publishing[guid] = nil end
                     print('Ambulator: a card action could not be applied; ask the host.')
                 end
             end
@@ -322,7 +447,7 @@ function onLoad(saved)
             for guid, flags in pairs(state.private or {}) do
                 if type(guid) == 'string' and guid:match('^%x%x%x%x%x%x$') and
                     type(flags) == 'table' and type(flags.tooltip) == 'boolean' and
-                    type(flags.interactable) == 'boolean' then privateObjects[guid] = flags end
+                    type(flags.interactable) == 'boolean' then privateObjects[guid] = { tooltip = flags.tooltip, interactable = flags.interactable, returned = flags.returned == true or nil } end
             end
         end
     end
@@ -331,7 +456,9 @@ function onLoad(saved)
     protectHands()
     for guid in pairs(privateObjects) do
         local object = getObjectFromGUID(guid)
-        if object then mask(object) end
+        if object then
+            if privateObjects[guid].returned and not inAnyHand(guid) then showReturned(object) else mask(object) end
+        end
     end
     self.setLock(true)
     self.setName('Ambulator ' .. room)
@@ -358,12 +485,18 @@ function onObjectEnterZone(zone, object)
     if privacyReady and zone.tag == 'Hand' then makePrivate(object) end
 end
 function onObjectSpawn(object) quarantine(object) end
-function onObjectLeaveContainer(_, object) quarantine(object) end
+function onObjectLeaveContainer(container, object)
+    local flags = privateObjects[container.getGUID()]
+    if flags and flags.returned then makeReturned(object) end
+    quarantine(object)
+end
 function onObjectEnterContainer(container, object)
     local guid = object.getGUID()
     -- A private card merged by a mod must not become a public deck. Explicit
     -- plays may merge into the public discard pile without retaining stale IDs.
-    if privateObjects[guid] and not publishing[guid] then makePrivate(container) end
+    local flags = privateObjects[guid]
+    if (publishing[guid] and publishing[guid].faceDown) or (flags and flags.returned) then makeReturned(container)
+    elseif flags and not publishing[guid] then makePrivate(container) end
 end
 function onObjectDestroy(object)
     local guid = object.getGUID()

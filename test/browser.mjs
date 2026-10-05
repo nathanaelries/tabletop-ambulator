@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { createApp } from '../server/index.mjs';
-import { HOST_KEY, snapshot } from './fixtures.mjs';
+import { HOST_KEY, snapshot, controlSnapshot } from './fixtures.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'ambulator-browser-'));
 const app = await createApp({ dataDir: directory, hostKey: HOST_KEY });
@@ -36,12 +36,15 @@ try {
   const credential = /local credential = '([^']+)'/.exec(object.ObjectStates[0].LuaScript)[1];
   const bridgeHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${credential}` };
   const connect = await fetch(`${base}/api/rooms/${code}/bridge/connect`, { method: 'POST', headers: bridgeHeaders, body: '{}' });
-  const session = (await connect.json()).session; let sequence = 0, current = snapshot(), pendingAcks = [];
+  const session = (await connect.json()).session; let sequence = 0, current = snapshot(), pendingAcks = []; const executed = [];
   async function sync() {
     const response = await fetch(`${base}/api/rooms/${code}/bridge/sync`, { method: 'POST', headers: bridgeHeaders, body: JSON.stringify({ ...current, acks: pendingAcks, session, sequence: ++sequence }) });
     assert.equal(response.status, 200); const data = await response.json();
     pendingAcks = data.commands.map(c => c.id);
-    for (const command of data.commands) if (command.kind === 'play') current.hands[command.color].find(z => z.index === command.zone).cards = current.hands[command.color].find(z => z.index === command.zone).cards.filter(c => c.guid !== command.guid);
+    for (const command of data.commands) {
+      executed.push(command);
+      if (command.kind === 'play' || command.kind === 'place') current.hands[command.color].find(z => z.index === command.zone).cards = current.hands[command.color].find(z => z.index === command.zone).cards.filter(c => !command.guids.includes(c.guid));
+    }
     return data;
   }
   await sync(); interval = setInterval(() => { sync().catch(error => errors.push(error.message)); }, 600);
@@ -88,12 +91,45 @@ try {
   await host.page.locator('[data-deck="d00002"]').selectOption('2'); await host.page.waitForTimeout(800);
   assert.equal(await host.page.locator('[data-deck="d00002"]').inputValue(), '2');
   await host.page.locator('#settings-form button').click(); await red.page.getByRole('button', { name: 'Draw Destination deck → Destination tickets' }).waitFor();
+
+  // Configure discovered controls; unadapted buttons and unapproved seats get no action.
+  current = controlSnapshot(); await sync();
+  await host.page.locator('[data-target="global:1"]').selectOption('2');
+  await host.page.locator('[data-target-face="global:1"]').selectOption('down');
+  await host.page.locator('[data-button="e00001:0"][data-color="Red"]').check();
+  await host.page.locator('[data-button-label="e00001:0"]').fill('Request tickets');
+  assert.equal(await host.page.locator('[data-button="e00002:0"]').count(), 0);
+  await host.page.waitForTimeout(800); assert.equal(await host.page.locator('[data-target-face="global:1"]').inputValue(), 'down');
+  await host.page.locator('#settings-form button').click();
+  await red.page.locator('[data-mod-button="e00001:0"]').waitFor(); assert.equal(await blue.page.locator('[data-mod-button]').count(), 0);
+  assert.equal(await host.page.locator('[data-guid]').count(), 0, 'The host desk must not display cards');
+  await red.page.getByRole('button', { name: 'Train cards (2)' }).click(); await red.page.locator('#select-cards').click();
+  await red.page.locator('[data-guid="a00001"]').click(); await red.page.locator('[data-guid="a00003"]').click();
+  assert.equal(await red.page.locator('.card.selected').count(), 2); assert.equal(await red.page.locator('#card-dialog').isVisible(), false);
+  assert.equal(executed.filter(c => c.kind === 'play' && c.guids.length === 2).length, 0, 'Selecting cards must not enqueue an action');
+  await red.page.screenshot({ path: 'test-results/batch-selection-phone.png', fullPage: true });
+  await red.page.locator('#batch-play').click(); await red.page.getByRole('button', { name: 'Train cards (0)' }).waitFor();
+  assert.deepEqual(executed.find(c => c.kind === 'play' && c.guids.length === 2).guids, ['a00001', 'a00003']);
+  await red.page.getByRole('button', { name: 'Destination tickets (1)' }).click();
+  await red.page.locator('#select-cards').click(); await red.page.locator('[data-guid="a00002"]').click();
+  assert.equal(await red.page.locator('#batch-play').count(), 0, 'Disabled generic ticket play must stay absent');
+  await red.page.getByRole('button', { name: 'Train cards (0)' }).click(); await red.page.getByRole('button', { name: 'Destination tickets (1)' }).click();
+  assert.equal(await red.page.locator('.card.selected').count(), 0, 'Changing hands clears the selection');
+  await red.page.locator('[data-guid="a00002"]').click(); await red.page.locator('[data-card-target="global:1"]').click();
+  await red.page.getByRole('button', { name: 'Destination tickets (0)' }).waitFor();
+  const returned = executed.find(c => c.kind === 'place'); assert.equal(returned.faceDown, true); assert.equal(returned.zone, 2); assert.equal(returned.targetId, 'global:1');
+  await red.page.locator('[data-mod-button="e00001:0"]').click();
+  for (let attempt = 0; attempt < 50 && !executed.some(c => c.kind === 'button'); attempt++) await red.page.waitForTimeout(100);
+  assert.equal(executed.find(c => c.kind === 'button').color, 'Red');
+  current.buttons[0].signature = 'changed-callback';
+  await red.page.locator('[data-mod-button="e00001:0"]').waitFor({ state: 'detached' });
+  for (const screen of [host, red, blue]) assert.ok(await screen.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'New controls must fit phone widths.');
   await host.page.locator('#lock-room').click(); await host.page.getByRole('button', { name: 'Open room to new players' }).waitFor();
   const late = await screen(390, 844); await late.page.goto(`${base}/?room=${code}`); await late.page.locator('#player-name').fill('Late'); await late.page.locator('#join-form button').click(); await late.page.getByText('This room is locked. Ask the host to open it.', { exact: true }).waitFor();
   const boRow = host.page.locator('.player-row').filter({ hasText: '<b>Bo</b>' }); await boRow.getByRole('button', { name: 'Remove' }).click(); await host.page.locator('#accept-confirm').click();
   await blue.page.getByText('Your session ended. Join again or ask the host.', { exact: true }).waitFor(); assert.equal(await blue.page.locator('#room').isVisible(), false);
   assert.deepEqual(errors, []);
-  console.log('Browser checks passed: desktop, 390/360px phones, host approval, private WebSocket delivery, separate hands, card actions, draw settings, refresh, offline reconnect, locking, removal, and escaped names.');
+  console.log('Browser checks passed: desktop, 390/360px phones, private delivery, separate hands, batch selection/play, face-down return controls, approved buttons, stale controls, settings, reconnect, locking, removal, and escaped names.');
 } finally {
   clearInterval(interval); if (browser) await browser.close(); await app.close(); await rm(directory, { recursive: true, force: true });
 }

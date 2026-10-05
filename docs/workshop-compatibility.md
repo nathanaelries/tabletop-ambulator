@@ -2,6 +2,8 @@
 
 Live checks completed on October 5, 2026 using the installed Linux version of Tabletop Simulator 14.2.2, the real Lua companion object, and independent browser sessions with a 390 × 844 phone viewport. Browser card images loaded from the mod's actual Steam-hosted sheets. No Workshop assets or generated objects containing credentials are included in this repository.
 
+These live results cover the earlier single-card companion. The subsequent batch actions, tagged destinations, face-hidden returns, and approved-button adapter have automated coverage but await native verification; see [new controls and validation record](table-controls.md). Their implementation does not extend the live compatibility claims below.
+
 | TTS Workshop table | Hand layout | Verified behavior |
 | --- | --- | --- |
 | [Ticket to Ride — Laudani, 2076749278](https://steamcommunity.com/sharedfiles/filedetails/?id=2076749278) | One hand per color, mixing train cards and destination tickets | Two approved seats, actual card images, private HTTP and WebSocket views, rejection of another player's card action, native draws, and native plays onto the table |

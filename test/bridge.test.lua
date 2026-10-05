@@ -21,6 +21,15 @@ local function fixture(saved, detached)
         object.attachHider = function(id, hidden) object.hidden[id] = hidden end
         object.isDestroyed = function() return object.destroyed or false end
         object.isSmoothMoving = function() return false end
+        object.setRotation = function(rotation) calls[#calls + 1] = { kind = 'rotation', guid = guid, rotation = rotation }; object.is_face_down = rotation.x == 180 end
+        object.getSnapPoints = function() return object.snaps or {} end
+        object.getButtons = function() return object.buttons or {} end
+        object.getTags = function() return object.tags or {} end
+        object.hasTag = function(tag) for _, value in ipairs(object.tags or {}) do if value == tag then return true end end; return false end
+        object.getRotation = function() return { y = 0 } end
+        object.positionToWorld = function(position) return position end
+        object.getVar = function(key) if key == 'ambulatorPressButton' and object.adapter then return function() end end end
+        object.call = function(key, args) assert(key == 'ambulatorPressButton'); calls[#calls + 1] = { kind = 'button', owner = guid, args = args } end
         objects[guid] = object; return object
     end
     hands.Red[1][1] = card('a00001', 'Train'); hands.Red[2][1] = card('a00002', 'Ticket'); hands.Blue[1][1] = card('b00001', 'Other train');
@@ -41,6 +50,7 @@ local function fixture(saved, detached)
     end })
     local env = setmetatable({
         Player = Player, Time = { time = 100 }, Hands = { enable = false, disable_unused = true, hiding = 3 },
+        Global = { getSnapPoints = function() return {} end },
         JSON = { encode = function(data) return data end, decode = function(data) assert(type(data) == 'table'); return data end },
         self = { setName = function() end, setLock = function() end, getGUID = function() return 'c00001' end },
         print = function(message) errors[#errors + 1] = message end,
@@ -115,9 +125,9 @@ local restart = fixture(); restart.respond({ error = 'Reconnect' }, 409); restar
 -- Save/load preserves applied IDs, preventing a duplicated deal after script reload.
 local restored = fixture(f.env.onSave()); restored.respond(permissions({ draw })); equal(#restored.calls, 0)
 
--- Own cards are played relative to that specific hand, and flipped only face-down.
+-- Own cards are played relative to that specific hand and rotated face-up.
 local play = fixture(); play.respond(permissions({ { id = 'own-play', kind = 'play', color = 'Red', zone = 1, guid = 'a00001' } }))
-equal(#play.calls, 2); equal(play.calls[1].kind, 'play'); equal(play.calls[1].position.x, 35, 'Play must clear large hand zones'); equal(play.calls[2].kind, 'flip')
+equal(#play.calls, 2); equal(play.calls[1].kind, 'play'); equal(play.calls[1].position.x, 35, 'Play must clear large hand zones'); equal(play.calls[2].kind, 'rotation'); equal(play.calls[2].rotation.x, 0)
 print('Lua bridge checks passed: two hands, local ownership checks, private decks, draw destination, command deduplication, save/load, revocation, reconnect, and own-card play.')
 
 local privacyId = 'ambulator-private-hands'
@@ -172,3 +182,89 @@ equal(discard.objects.d00001.invisible[privacyId], nil, 'Approved plays may ente
 discard.objects.a00001.destroyed = true; discard.env.onObjectDestroy(discard.objects.a00001)
 discard.frame(); assert(discard.settle()); equal(discard.env.onSave().private.a00001, nil, 'Discard merges must clear stale private IDs')
 print('Privacy checks passed: spectator guard, invisible hands, no hover/highlight, spawn/deal quarantine, sticky privacy, reload, offline protection, and explicit play only.')
+
+-- One stale card cancels the entire batch before any position/rotation changes.
+local batch = fixture(); local second = batch.card('a00003', 'Second train'); batch.hands.Red[1][2] = second
+batch.respond(permissions({ { id = 'invalid-batch', kind = 'play', color = 'Red', zone = 1, guids = { 'a00001', 'b00001' } } })); equal(#batch.calls, 0)
+batch.advance()
+batch.respond(permissions({ { id = 'batch', kind = 'play', color = 'Red', zone = 1, guids = { 'a00001', 'a00003' } } })); equal(#batch.calls, 4)
+assert(batch.calls[1].position.z ~= batch.calls[3].position.z, 'Batch cards should be spread along the destination')
+hidden(batch.objects.a00001); hidden(second)
+batch.hands.Red[1] = {}; batch.frame(); batch.frame(); assert(batch.settle()); assert(batch.settle())
+equal(second.invisible[privacyId], false); equal(second.hidden[privacyId], false)
+
+local function withTarget()
+    local t = fixture()
+    t.env.Global.getSnapPoints = function() return { { position = { x = 0, y = 1, z = 30 }, rotation = { y = 90 }, tags = { 'AmbulatorDrop:Ticket returns', 'AmbulatorFor:Red' } } } end
+    t.respond(permissions()); t.advance()
+    local metadata = t.requests[#t.requests].data.targets[1]
+    local policy = permissions()
+    policy.enabledTargets = { ['global:1'] = { zone = 2, faceDown = true, signature = metadata.signature } }
+    return t, policy, metadata
+end
+local returned, returnPolicy, targetMetadata = withTarget()
+local returnCommand = { id = 'return-ticket', kind = 'place', color = 'Red', zone = 2, guids = { 'a00002' }, targetId = 'global:1', faceDown = true, signature = targetMetadata.signature }
+returnPolicy.commands = { returnCommand }; returned.respond(returnPolicy)
+equal(#returned.calls, 2); equal(returned.calls[2].rotation.x, 180); hidden(returned.objects.a00002)
+returned.hands.Red[2] = {}; returned.frame(); assert(returned.settle())
+equal(returned.objects.a00002.invisible[privacyId], false, 'Returned backs may be visible'); equal(returned.objects.a00002.hidden[privacyId], true, 'Returned faces must stay hidden'); equal(returned.objects.a00002.tooltip, false)
+equal(returned.env.onSave().private.a00002.returned, true)
+returned.env.onObjectEnterContainer(returned.objects.d00002, returned.objects.a00002)
+equal(returned.objects.d00002.hidden[privacyId], true); equal(returned.objects.d00002.tooltip, false)
+returned.advance(); local deckFound = false
+for _, deck in ipairs(returned.requests[#returned.requests].data.decks) do if deck.guid == 'd00002' then deckFound = true end end
+assert(deckFound, 'A face-hidden return deck remains available for approved draws')
+local child = returned.card('e00001', 'Returned ticket')
+returned.env.onObjectLeaveContainer(returned.objects.d00002, child); hidden(child)
+returned.frame(); assert(returned.settle()); equal(child.hidden[privacyId], true); equal(child.invisible[privacyId], false)
+local reloadReturn = fixture(returned.env.onSave(), 'e00001')
+equal(reloadReturn.objects.e00001.invisible[privacyId], false); equal(reloadReturn.objects.e00001.hidden[privacyId], true); equal(reloadReturn.objects.e00001.tooltip, false)
+returned.hands.Red[2][1] = child; returned.env.onObjectEnterZone({ tag = 'Hand' }, child); hidden(child)
+equal(returned.env.onSave().private.e00001.returned, nil, 'Reentering a hand restores full privacy')
+
+-- A moved snap point or a changed orientation invalidates the command locally.
+local stale, stalePolicy, staleMetadata = withTarget()
+stalePolicy.commands = { { id = 'stale-target', kind = 'place', color = 'Red', zone = 2, guid = 'a00002', targetId = 'global:1', faceDown = true, signature = staleMetadata.signature } }
+stale.env.Global.getSnapPoints = function() return { { position = { x = 50, y = 1, z = 30 }, tags = { 'AmbulatorDrop:Ticket returns', 'AmbulatorFor:Red' } } } end
+stale.respond(stalePolicy); equal(#stale.calls, 0)
+local orientation, orientationPolicy, orientationMetadata = withTarget()
+orientationPolicy.commands = { { id = 'spoofed-orientation', kind = 'place', color = 'Red', zone = 2, guid = 'a00002', targetId = 'global:1', faceDown = false, signature = orientationMetadata.signature } }
+orientation.respond(orientationPolicy); equal(#orientation.calls, 0)
+local restricted, restrictedPolicy, restrictedMetadata = withTarget()
+restrictedPolicy.seats = { 'Blue' }; restricted.hands.Blue[2][1] = restricted.card('b00002', 'Blue ticket')
+restrictedPolicy.commands = { { id = 'wrong-target-color', kind = 'place', color = 'Blue', zone = 2, guid = 'b00002', targetId = 'global:1', faceDown = true, signature = restrictedMetadata.signature } }
+restricted.respond(restrictedPolicy); equal(#restricted.calls, 0)
+
+-- A deck that became private outside a hand cannot execute a stale draw.
+local stickyDeck = fixture(); stickyDeck.env.onObjectEnterContainer(stickyDeck.objects.d00002, stickyDeck.objects.a00002)
+stickyDeck.respond(permissions({ { id = 'sticky-deck', kind = 'draw', color = 'Red', zone = 2, guid = 'd00002' } })); equal(#stickyDeck.calls, 0)
+
+-- Discover only public controls and execute the host-approved native owner.
+local buttons = fixture(); local public = buttons.card('e00002', 'Public button', 'BlockSquare'); public.adapter = true; public.tags = { 'AmbulatorFor:Red' }
+public.buttons = { { index = 0, label = 'Draw tickets', click_function = 'drawTickets', function_owner = public, width = 600, height = 300 } }
+buttons.objects.a00002.buttons = public.buttons -- Private objects must not expose controls.
+buttons.respond(permissions()); buttons.advance(); local catalog = buttons.requests[#buttons.requests].data.buttons
+equal(#catalog, 1); equal(catalog[1].id, 'e00002:0'); equal(catalog[1].ready, true)
+local buttonPolicy = permissions(); buttonPolicy.enabledButtons = { ['e00002:0'] = { signature = catalog[1].signature, colors = { 'Red' } } }
+local buttonCommand = { id = 'press', kind = 'button', color = 'Red', buttonId = 'e00002:0', signature = catalog[1].signature }
+buttonPolicy.commands = { buttonCommand }; buttons.respond(buttonPolicy); equal(#buttons.calls, 1); equal(buttons.calls[1].args.color, 'Red'); equal(buttons.calls[1].args.index, 0); equal(buttons.calls[1].args.objectGuid, 'e00002')
+buttons.advance(); public.buttons[1].click_function = 'changedCallback'; buttonCommand.id = 'changed'; buttons.respond(buttonPolicy); equal(#buttons.calls, 1)
+buttons.advance(); public.buttons[1].click_function = 'drawTickets'; public.adapter = false; buttonCommand.id = 'removed-adapter'; buttons.respond(buttonPolicy); equal(#buttons.calls, 1)
+
+-- Run the actual adapter inside the owner sandbox with a classic three-argument callback.
+local adapterOwner, adapterObject = {}, {}
+adapterObject.getButtons = function() return { { index = 0, function_owner = adapterOwner, click_function = 'originalCallback' } } end
+local adapterCalls = 0
+local adapterEnv = { self = adapterOwner, Global = {}, getObjectFromGUID = function(guid) if guid == 'e00002' then return adapterObject end end }
+adapterEnv.originalCallback = function(object, color, alt) equal(object, adapterObject); equal(color, 'Red'); equal(alt, false); adapterCalls = adapterCalls + 1; return 'ok' end
+adapterEnv._G = adapterEnv; setmetatable(adapterEnv, { __index = _G })
+assert(loadfile('lua/button-adapter.lua', 't', adapterEnv))()
+equal(adapterEnv.ambulatorPressButton({ objectGuid = 'e00002', index = 0, color = 'Red' }), 'ok'); equal(adapterCalls, 1)
+assert(not pcall(adapterEnv.ambulatorPressButton, { objectGuid = 'e00002', index = 1, color = 'Red' }))
+adapterObject.getButtons = function() return { { index = 0, function_owner = {}, click_function = 'originalCallback' } } end
+assert(not pcall(adapterEnv.ambulatorPressButton, { objectGuid = 'e00002', index = 0, color = 'Red' })); equal(adapterCalls, 1)
+-- Global-owned classic buttons work even when Global has no self variable.
+adapterEnv.self = nil; adapterEnv.Global = adapterOwner
+adapterObject.getButtons = function() return { { index = 0, click_function = 'originalCallback' } } end
+equal(adapterEnv.ambulatorPressButton({ objectGuid = 'e00002', index = 0, color = 'Red' }), 'ok'); equal(adapterCalls, 2)
+print('Milestone checks passed: whole-batch validation, spreading, approved targets, face-hidden returns/merges/reloads, stale controls, private control filtering, and native callback adapter signature.')
