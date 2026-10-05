@@ -75,6 +75,8 @@ try {
   // Collect this player's frames independently for the actual private-delivery assertion.
   const redFrames = []; red.page.on('websocket', ws => ws.on('framereceived', event => redFrames.push(String(event.payload))));
   await red.page.reload(); await red.page.getByRole('button', { name: 'Destination tickets (1)' }).waitFor();
+  // Over a real HTTPS proxy, HTTP state can render before WSS delivers its first frame.
+  for (let attempt = 0; attempt < 50 && !redFrames.some(frame => frame.includes('a00002')); attempt++) await red.page.waitForTimeout(100);
   assert.ok(redFrames.some(frame => frame.includes('a00002'))); assert.ok(redFrames.every(frame => !frame.includes('b00001') && !frame.includes('b00002') && !frame.includes('Blue destination')));
   await red.page.getByRole('button', { name: 'Destination tickets (1)' }).click();
   // A lost phone connection must recover its existing approved seat.

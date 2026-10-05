@@ -56,7 +56,7 @@ These features are lower priority for Ticket to Ride, where ordinary player-to-p
 
 ## Hosting and operations
 
-Docker and reverse-proxy templates already exist. Remaining acceptance work is a real Hetzner HTTPS/WSS deployment, physical phone testing, restart/backup recovery, and an upgrade guide that includes replacing the TTS companion. Local/offline deployment can remain an optional alternative using the same application; offline card artwork would require deliberate asset caching. Syncthing-style pairing, Secret Service integration, and a TTS-free board renderer are outside the current scope.
+Docker and reverse-proxy templates already exist. The first Hetzner deployment passed real HTTPS/WSS acceptance checks behind the existing nginx-proxy; see [hosting validation](hosting-validation.md). Remaining acceptance work is native TTS-to-Hetzner integration, physical phone testing, restart/backup recovery, and an upgrade guide that includes replacing the TTS companion. Local/offline deployment can remain an optional alternative using the same application; offline card artwork would require deliberate asset caching. Syncthing-style pairing, Secret Service integration, and a TTS-free board renderer are outside the current scope.
 
 ## Release order
 

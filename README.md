@@ -78,6 +78,8 @@ This overlay supplies the proxy hostname and certificate hostname for both curre
 
 The proxy overlay requires Compose 2.24.4 or newer. The network must already exist. Keep PostgreSQL and other unrelated services out of this stack; the fork uses an atomic JSON snapshot in the `room_data` named volume.
 
+The first Hetzner installation passed [hosted HTTPS/WSS and browser acceptance checks](docs/hosting-validation.md). Native TTS-to-hosted-service and physical-phone checks remain separate work.
+
 The container uses UID 1000. File-backed Compose secrets inherit host ownership and permissions; make the private host-key file readable by that UID. A root-owned file can use a group readable by the container, without making it world-readable. Rootless Podman uses different UID mapping; when testing with Podman secrets, set `uid=1000,mode=0400` on the secret mount. Compose secrets are file mounts, not automatic encryption at rest.
 
 `PUBLIC_ORIGIN` is required in production. `APP_PORT` defaults to `3001`; `ROOM_TTL_HOURS` defaults to `48`; `MAX_ROOMS` defaults to `100`. Single-instance hosting is supported. There is no shared state or socket routing for multiple replicas.
