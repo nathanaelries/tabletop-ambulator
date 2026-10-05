@@ -154,7 +154,8 @@ function renderCardDialog() {
   if (!card) { $('card-dialog').close(); selectedCard = null; return; }
   $('card-preview').replaceChildren(sprite(card)); $('card-name').textContent = card.name; $('card-zone').textContent = state.zones[selectedCard.zone]?.label || `Hand ${selectedCard.zone}`;
   const pending = state.pending.some(p => p.guid === card.guid);
-  $('highlight-card').disabled = !live || !state.connected || pending; $('play-card').hidden = state.zones[selectedCard.zone]?.play !== true; $('play-card').disabled = !live || !state.connected || pending;
+  $('play-card').hidden = state.zones[selectedCard.zone]?.play !== true; $('play-card').disabled = !live || !state.connected || pending;
+  $('card-privacy').textContent = $('play-card').hidden ? 'Only you can see this card.' : 'Only you can see this card. Playing it reveals it on the table.';
   $('card-pending').textContent = pending ? 'Waiting for the table…' : '';
 }
 $('join-form').onsubmit = event => { event.preventDefault(); run(async () => {
@@ -183,7 +184,6 @@ $('revoke-bridge').onclick = () => run(async () => { if (await confirmAction('Di
 $('close-room').onclick = () => run(async () => { if (await confirmAction('Close this room?', 'All player sessions and the TTS connection will end.')) { await route('close', {}); home(); notify('Room closed.'); } });
 $('leave-room').onclick = () => run(async () => { if (await confirmAction('Leave the room?', 'Your seat will be released. Rejoining will require host approval.')) { await route('logout', {}); home(); } });
 $('close-card').onclick = () => { $('card-dialog').close(); selectedCard = null; };
-$('highlight-card').onclick = () => run(async () => { if (!selectedCard) return; await route('action', { kind: 'highlight', ...selectedCard }); notify('Highlighted on the table.'); });
 $('play-card').onclick = () => run(async () => { if (!selectedCard) return; await route('action', { kind: 'play', ...selectedCard }); $('card-dialog').close(); selectedCard = null; notify('Play requested.'); });
 // API field is guid; do not send UI-only fields or user-selectable ownership.
 if (code) {

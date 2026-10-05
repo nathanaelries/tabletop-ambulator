@@ -165,7 +165,8 @@ export class Rooms {
   action(room, identity, body) {
     requireThat(identity.role === 'player' && identity.player.color, 'Ask the host to approve your seat first.', 403);
     requireThat(Date.now() - room.bridgeSeenAt < 10_000 && room.bridgeSession, 'TTS is disconnected. Try again once it reconnects.', 409);
-    requireThat(['highlight', 'play', 'draw'].includes(body.kind) && typeof body.guid === 'string' && guidPattern.test(body.guid) && Number.isInteger(body.zone) && body.zone >= 1 && body.zone <= 8, 'Invalid card action.');
+    requireThat(body.kind !== 'highlight', 'Private cards cannot be highlighted on the shared screen.', 403);
+    requireThat(['play', 'draw'].includes(body.kind) && typeof body.guid === 'string' && guidPattern.test(body.guid) && Number.isInteger(body.zone) && body.zone >= 1 && body.zone <= 8, 'Invalid card action.');
     requireThat(!own(body, 'color') && !own(body, 'gameCode') && !own(body, 'playerId'), 'The server chooses your seat.', 403);
     const command = { id: randomUUID(), playerId: identity.player.id, color: identity.player.color, kind: body.kind, guid: body.guid, zone: body.zone, createdAt: Date.now() };
     requireThat(this.commandAllowed(room, command), 'That action is not permitted for your hand.', 403);

@@ -64,7 +64,8 @@ try {
   await red.page.locator('[data-guid="a00002"]').click(); await red.page.locator('#card-dialog').waitFor({ state: 'visible' });
   assert.equal(await red.page.locator('#play-card').isVisible(), false);
   await red.page.screenshot({ path: 'test-results/private-ticket-phone.png', fullPage: true });
-  await red.page.locator('#highlight-card').click(); await red.page.getByText('Highlighted on the table.', { exact: true }).waitFor();
+  assert.equal(await red.page.locator('#highlight-card').count(), 0);
+  await red.page.getByText('Only you can see this card.', { exact: true }).waitFor();
   await red.page.locator('#close-card').click(); await red.page.getByRole('button', { name: 'Train cards (1)' }).click();
   await red.page.locator('[data-guid="a00001"]').click(); await red.page.locator('#play-card:not([disabled])').click();
   await red.page.getByText('Train cards (0)', { exact: true }).waitFor();

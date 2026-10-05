@@ -9,7 +9,8 @@ Run the commands below from the repository root. In the original Right Of Way wo
 - Host-key-protected room creation, room-code joining, host approval of player colors, room locking, removal, and closing.
 - HttpOnly player sessions that reconnect after refresh. Server-side filtering over both HTTP and WebSockets; other players’ card identities and images are never included in your payload.
 - All of a color’s hand zones, with separate tabs, configurable names, and optional play controls. Hands 1 and 2 initially have the labels “Train cards” and “Destination tickets”; **verify the index order against your mod**. All play/draw controls start disabled; enable train play after checking the layout.
-- Card inspection, highlighting, moving your own cards to the table, and optional one-card draws from host-enabled decks into the configured hand.
+- Private card inspection on phones, explicit **Play face up to table**, and optional one-card draws from host-enabled decks into the configured hand. Public highlighting of private cards is disabled.
+- Shared-display privacy: hand objects are invisible, including their backs, and have no hover tooltip. All TTS clients are kept in Grey spectator mode. Native actions on private cards are blocked; only an approved phone play releases their hiding after they leave every hand.
 - A generated TTS companion object with its own revocable credential, authenticated snapshots, replay checks, command acknowledgements, and local ownership checks immediately before executing a command.
 - Room expiry, hashed stored credentials, persistent seat assignments, and reconnect after service restart. Card snapshots and pending commands are held only in memory.
 - Nonroot Docker image, read-only filesystem, persistent data volume, health check, request limits, origin checks, and HTTPS/WSS behind an existing proxy.
@@ -74,13 +75,17 @@ The container uses UID 1000. File-backed Compose secrets inherit host ownership 
 
 ## Connect your TTS game
 
-1. Load your chosen Workshop game and finish player/hand setup in TTS.
+1. Load your chosen Workshop game privately, before displaying it on the TV. Configure its player/hand zones, and import the companion before dealing private cards or sharing the display.
 2. Open the web app on the host computer, create a room, and choose **Download TTS object**.
 3. Put the downloaded `Ambulator-CODE.json` in TTS’s `Saves/Saved Objects` folder under your configured save-data directory. Use **Objects → Saved Objects** to spawn it on the current table. If it does not appear immediately, reopen the menu or restart TTS. A missing thumbnail is expected.
 4. Alternatively, generate the object, expand **Or copy the object’s Lua script**, copy it, and paste it into the script of a separate object such as a spare figurine. Use TTS’s **Save & Play**. Keep it on a separate object so the game mod’s Global and object scripts are preserved.
 5. The host page will say **Table connected** and list colors with hand zones. Give players the invite link or room code. Each requests a color; use **Assign seat** to approve it.
 6. Check the hand indices shown under **Hands & draw decks**, rename them if necessary, and enable only the decks/actions you want phones to control. Save the settings.
-7. Put the TTS board on the TV and change that TTS client to **Grey spectator**. A client seated as a player can see that player's hand; Black can see everyone's hands. The host web page is a control desk, not the board renderer.
+7. Verify the companion is active: the TTS viewer must be **Grey spectator**, and hand cards must be invisible. Then put that TTS board on the TV. The companion automatically returns clients to Grey if they try a player or Black seat. Keep private phone/browser views on their owners' devices; the host web page is a control desk, not the board renderer.
+
+This mode requires every player to use a phone/browser session for private hands; all connected TTS clients serve as shared board viewers. Mods that count seated TTS players need an explicit player count. Cards remain hidden if moved out of a hand manually. Newly spawned cards/decks are hidden while moving and become visible only after settling outside hands; cards entering a hand keep their hiding until an approved play. These protections continue locally during service outages or credential revocation, and private object IDs survive a TTS save/reload. The companion also keeps hand zones enabled with normal hand hiding.
+
+Existing installations must generate and import an updated companion object to enable this guard. Updating the service alone does not replace Lua already loaded in TTS.
 
 TTS sends requests directly to the HTTPS service using [WebRequest.custom](https://api.tabletopsimulator.com/webrequest/manager/#custom). There is no external-editor listener or additional local bridge process. Its [hand API](https://api.tabletopsimulator.com/player/instance/#gethandobjects) is called with each explicit index, including empty hands. See the official [saved-object guide](https://kb.tabletopsimulator.com/host-guides/spawning-objects/) and [save-data locations](https://kb.tabletopsimulator.com/getting-started/technical-info/) if your folder is elsewhere.
 
@@ -106,6 +111,8 @@ The server stores SHA-256 digests of high-entropy credentials, not plaintext tok
 
 **TTS and the Hetzner service remain trusted.** The generated object and any TTS save containing it include the room’s TTS credential. Do not publish those objects/saves or share them with untrusted TTS clients. Revoke it after accidental sharing. Players using phones receive only their own hands; connected TTS clients may have broader access to game scripts and assets. This version does not use end-to-end encryption to hide cards from Hetzner or the TTS host.
 
+The display guard operates while the companion's Lua script is active. A TTS administrator can override/delete that script or load an unprotected save; TTS cannot provide an absolute privacy boundary against its own administrator. Import and verify the companion before showing the TV, and keep it active throughout play. The guard uses independent [TTS object hiders](https://api.tabletopsimulator.com/object/#attachinvisiblehider) and [player event handlers](https://api.tabletopsimulator.com/events/#onplayerchangecolor); it does not replace the Workshop mod's scripts.
+
 The default proxy sees all requests coming from one IP; coarse IP limits are intentionally generous. Additional internet-facing limits can be applied at your existing proxy. The application never trusts client-provided `X-Forwarded-For` headers. Protect the host key, `.env`, data volume, and backups. Rotating the server host key affects room creation; close existing rooms separately to revoke their sessions.
 
 ## Verify and develop
@@ -120,6 +127,6 @@ npm run test:lua
 
 The Lua checks require a `lua` interpreter compatible with Lua 5.2. On distributions with separately named executables, use `lua5.2 test/bridge.test.lua`. Browser tests use synthetic artwork and a simulated TTS endpoint; they do not download a Workshop mod or launch TTS.
 
-Server tests cover private state over HTTP and WebSockets, denied cross-player/zone actions, seat approval, protected host routes, draw policies, stale/replayed snapshots, bridge credential rotation, origin restrictions, cookies, player removal, restart persistence, and legacy route removal. Lua tests execute the real bridge with a mocked TTS host to verify live ownership checks and deduplication. Live TTS/mod integration is the remaining acceptance check.
+Server tests cover private state over HTTP and WebSockets, denied cross-player/zone/highlight actions, seat approval, protected host routes, draw policies, stale/replayed snapshots, bridge credential rotation, origin restrictions, cookies, player removal, restart persistence, and legacy route removal. Lua tests execute the real bridge with a mocked TTS host to verify ownership, deduplication, spectator enforcement, invisible hands, spawn quarantine, privacy after revocation/reload, and revealing only approved plays outside all hands. Live TTS integration and its limits are recorded in [Workshop compatibility](docs/workshop-compatibility.md).
 
 The original application is preserved in `upstream/` for comparison and excluded from Docker builds. The original MIT license is retained in `LICENSE.md`; provenance is recorded in `ATTRIBUTION.md`. The maintained companion lives on the `secure-companion` branch. Hosting on Hetzner is a separate deployment step.

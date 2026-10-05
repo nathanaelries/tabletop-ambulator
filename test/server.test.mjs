@@ -76,9 +76,9 @@ test('cross-player, cross-zone, spoofed-color, disabled-play, and disabled-deck 
     { kind: 'play', guid: 'a00001', zone: 1, color: 'Blue' }, { kind: 'draw', guid: 'd00001', zone: 1 }
   ];
   for (const attempt of attempts) assert.equal((await f.request(f.path + '/action', attempt, red.cookie)).status, 403);
-  assert.equal((await f.request(f.path + '/action', { kind: 'highlight', guid: 'a00002', zone: 2 }, red.cookie)).status, 202);
+  assert.equal((await f.request(f.path + '/action', { kind: 'highlight', guid: 'a00002', zone: 2 }, red.cookie)).status, 403);
   assert.equal((await f.request(f.path + '/action', { kind: 'play', guid: 'a00001', zone: 1 }, red.cookie)).status, 202);
-  const pending = await f.sync(); assert.equal(pending.data.commands.length, 2); assert.equal(pending.data.commands[0].color, 'Red');
+  const pending = await f.sync(); assert.equal(pending.data.commands.length, 1); assert.equal(pending.data.commands[0].color, 'Red');
   assert.ok(!JSON.stringify(pending.data).includes(red.id));
   const acked = await f.sync({ ...snapshot(), acks: pending.data.commands.map(c => c.id) }); assert.deepEqual(acked.data.commands, []);
 });
