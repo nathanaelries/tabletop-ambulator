@@ -2,7 +2,7 @@
 
 Live checks completed on October 5, 2026 using the installed Linux version of Tabletop Simulator 14.2.2, the real Lua companion object, and independent browser sessions with a 390 × 844 phone viewport. Browser card images loaded from the mod's actual Steam-hosted sheets. No Workshop assets or generated objects containing credentials are included in this repository.
 
-These live results cover the earlier single-card companion. The subsequent batch actions, tagged destinations, face-hidden returns, and approved-button adapter have automated coverage but await native verification; see [new controls and validation record](table-controls.md). Their implementation does not extend the live compatibility claims below.
+The original local live results cover the earlier single-card companion. The current companion also passed native hosted draw/private-hand checks on the scripted table through Hetzner HTTPS/WSS; see [hosted validation](hosting-validation.md). Batch actions, tagged destinations, face-hidden returns, and the approved-button adapter have automated coverage but await native verification; see [new controls and validation record](table-controls.md).
 
 | TTS Workshop table | Hand layout | Verified behavior |
 | --- | --- | --- |
@@ -31,6 +31,7 @@ Deck GUIDs can change when a deck is rebuilt or merged. Recheck the discovered d
 - A fixed six-unit play offset remained inside Laudani's large hand volume, so TTS put the card back in the hand. Play now uses the hand's depth plus clearance and a direct position change. Live checks confirmed the played card leaves the hand; the scripted table's destination hand remains unchanged.
 - TTS's Black seat bypasses object hiding. The companion now returns clients to Grey in the color-change event and every update. Live attempts to enter Red or Black returned to Grey immediately.
 - Disabling object interaction removes cards from the native hand API. The guard preserves native hand membership and instead vetoes player actions on private/transient cards. Tooltips and both visibility/face hiders remain suppressed.
+- In native MoonSharp, declaring an uninitialized snap label could retain a table value and stop syncing. Resetting the label to nil for every point and checking its type restored native hosted sync; ordinary unlabelled Workshop snap points are skipped.
 
 ## Shared-display privacy check
 
