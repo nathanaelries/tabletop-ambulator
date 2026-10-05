@@ -44,7 +44,8 @@ end
 local function snapshot()
     local hands, decks, inHand = {}, {}, {}
     for _, color in ipairs(Player.getColors()) do
-        local player = Player[color]
+        -- Grey is a spectator color, but TTS does not expose Player.Grey.
+        local player = color ~= 'Grey' and Player[color] or nil
         if color ~= 'Grey' and color ~= 'Black' and player and player.getHandCount() > 0 then
             hands[color] = {}
             for index = 1, math.min(player.getHandCount(), 8) do
@@ -104,7 +105,7 @@ local function execute(command, permissions)
         if object.tag ~= 'Deck' and object.tag ~= 'DeckCustom' then return end
         -- A deck may have been moved into someone's hand since the last snapshot.
         for _, color in ipairs(Player.getColors()) do
-            local owner = Player[color]
+            local owner = color ~= 'Grey' and Player[color] or nil
             if owner then
                 for index = 1, owner.getHandCount() do
                     for _, held in ipairs(owner.getHandObjects(index)) do
@@ -124,11 +125,14 @@ local function execute(command, permissions)
         if not zone or zone.play ~= true then return end
         local hand = Player[command.color].getHandTransform(command.zone)
         local rotation = hand.rotation.y * math.pi / 180
-        object.setPositionSmooth({
-            x = hand.position.x + math.sin(rotation) * 6,
+        -- Some mods have large hand volumes. A fixed offset can land back in
+        -- the hand; use its depth plus clearance and move out directly.
+        local distance = math.max(6, hand.scale.z + 2)
+        object.setPosition({
+            x = hand.position.x + math.sin(rotation) * distance,
             y = hand.position.y + 1,
-            z = hand.position.z + math.cos(rotation) * 6
-        }, false, true)
+            z = hand.position.z + math.cos(rotation) * distance
+        })
         if object.is_face_down then object.flip() end
     end
 end

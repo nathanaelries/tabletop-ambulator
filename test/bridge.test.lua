@@ -12,7 +12,7 @@ local function fixture(saved)
             getName = function() return label end,
             getJSON = function() return { CardID = 101, CustomDeck = { ['1'] = { FaceURL = 'http://i.imgur.com/sheet.png', NumWidth = 2, NumHeight = 2 } } } end,
             highlightOn = function() calls[#calls + 1] = { kind = 'highlight', guid = guid } end,
-            setPositionSmooth = function(position) calls[#calls + 1] = { kind = 'play', guid = guid, position = position } end,
+            setPosition = function(position) calls[#calls + 1] = { kind = 'play', guid = guid, position = position } end,
             flip = function() calls[#calls + 1] = { kind = 'flip', guid = guid } end,
             deal = function(count, color, index) calls[#calls + 1] = { kind = 'draw', count = count, color = color, zone = index } end
         }
@@ -26,9 +26,12 @@ local function fixture(saved)
         Player[color] = {
             getHandCount = function() return #zones end,
             getHandObjects = function(index) assert(index, 'The hand index must be explicit.'); return hands[playerColor][index] end,
-            getHandTransform = function(index) return { position = { x = 20 + index, y = 1, z = 10 }, rotation = { y = 90 } } end
+            getHandTransform = function(index) return { position = { x = 20 + index, y = 1, z = 10 }, rotation = { y = 90 }, scale = { z = 12 } } end
         }
     end
+    setmetatable(Player, { __index = function(_, color)
+        if color == 'Grey' then error('TTS does not expose Player.Grey') end
+    end })
     local env = setmetatable({
         Player = Player, Time = { time = 100 },
         JSON = { encode = function(data) return data end, decode = function(data) assert(type(data) == 'table'); return data end },
@@ -99,5 +102,5 @@ local restored = fixture(f.env.onSave()); restored.respond(permissions({ draw })
 
 -- Own cards are played relative to that specific hand, and flipped only face-down.
 local play = fixture(); play.respond(permissions({ { id = 'own-play', kind = 'play', color = 'Red', zone = 1, guid = 'a00001' } }))
-equal(#play.calls, 2); equal(play.calls[1].kind, 'play'); equal(play.calls[1].position.x, 27); equal(play.calls[2].kind, 'flip')
+equal(#play.calls, 2); equal(play.calls[1].kind, 'play'); equal(play.calls[1].position.x, 35, 'Play must clear large hand zones'); equal(play.calls[2].kind, 'flip')
 print('Lua bridge checks passed: two hands, local ownership checks, private decks, draw destination, command deduplication, save/load, revocation, reconnect, and own-card play.')

@@ -14,7 +14,7 @@ Run the commands below from the repository root. In the original Right Of Way wo
 - Room expiry, hashed stored credentials, persistent seat assignments, and reconnect after service restart. Card snapshots and pending commands are held only in memory.
 - Nonroot Docker image, read-only filesystem, persistent data volume, health check, request limits, origin checks, and HTTPS/WSS behind an existing proxy.
 
-This is a general hand companion. It does not implement Ticket to Ride rules, route claiming, scoring, turns, ticket selection, or mod-specific button presses. The host coordinates these in TTS. Enabling draws allows individual draws; it does not enforce the board game’s draw limits. **Live integration with a particular Workshop mod remains to be tested.**
+This is a general hand companion. It does not implement Ticket to Ride rules, route claiming, scoring, turns, ticket selection, or mod-specific button presses. The host coordinates these in TTS. Enabling draws allows individual draws; it does not enforce the board game's draw limits. Live integration has been checked with two TTS Workshop tables; see [tested Workshop compatibility and setup](docs/workshop-compatibility.md).
 
 ## Run locally
 
@@ -80,7 +80,7 @@ The container uses UID 1000. File-backed Compose secrets inherit host ownership 
 4. Alternatively, generate the object, expand **Or copy the object’s Lua script**, copy it, and paste it into the script of a separate object such as a spare figurine. Use TTS’s **Save & Play**. Keep it on a separate object so the game mod’s Global and object scripts are preserved.
 5. The host page will say **Table connected** and list colors with hand zones. Give players the invite link or room code. Each requests a color; use **Assign seat** to approve it.
 6. Check the hand indices shown under **Hands & draw decks**, rename them if necessary, and enable only the decks/actions you want phones to control. Save the settings.
-7. Put the TTS board on the TV. The host web page is a control desk, not the board renderer.
+7. Put the TTS board on the TV and change that TTS client to **Grey spectator**. A client seated as a player can see that player's hand; Black can see everyone's hands. The host web page is a control desk, not the board renderer.
 
 TTS sends requests directly to the HTTPS service using [WebRequest.custom](https://api.tabletopsimulator.com/webrequest/manager/#custom). There is no external-editor listener or additional local bridge process. Its [hand API](https://api.tabletopsimulator.com/player/instance/#gethandobjects) is called with each explicit index, including empty hands. See the official [saved-object guide](https://kb.tabletopsimulator.com/host-guides/spawning-objects/) and [save-data locations](https://kb.tabletopsimulator.com/getting-started/technical-info/) if your folder is elsewhere.
 
