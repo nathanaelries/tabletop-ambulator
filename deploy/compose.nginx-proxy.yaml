@@ -1,0 +1,11 @@
+# Use with compose.yaml and deploy/compose.proxy.yaml.
+# Certificate issuance is handled by the existing acme-companion service.
+services:
+  ambulator:
+    image: rightofway-ambulator:${IMAGE_TAG:-local}
+    environment:
+      VIRTUAL_HOST: ${GAME_DOMAIN:?Set GAME_DOMAIN in .env}
+      VIRTUAL_PORT: "3001"
+      ACME_HOST: ${GAME_DOMAIN:?Set GAME_DOMAIN in .env}
+      # Compatibility with older acme-companion versions.
+      LETSENCRYPT_HOST: ${GAME_DOMAIN:?Set GAME_DOMAIN in .env}

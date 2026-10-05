@@ -68,6 +68,14 @@ For Traefik, also configure `GAME_DOMAIN`, `PROXY_NETWORK`, and the existing ent
 docker compose -f compose.yaml -f deploy/compose.proxy.yaml -f deploy/compose.traefik.yaml up -d --build
 ```
 
+For an existing [nginx-proxy](https://github.com/nginx-proxy/nginx-proxy) with [acme-companion](https://github.com/nginx-proxy/acme-companion), set `GAME_DOMAIN` and `PROXY_NETWORK` in `.env`, point the hostname's DNS at your server, then run:
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.proxy.yaml -f deploy/compose.nginx-proxy.yaml up -d --build
+```
+
+This overlay supplies the proxy hostname and certificate hostname for both current and older acme-companion versions. It uses your existing certificate service; it does not install another proxy. Set `IMAGE_TAG` to an application revision if you want a versioned image for this deployment.
+
 The proxy overlay requires Compose 2.24.4 or newer. The network must already exist. Keep PostgreSQL and other unrelated services out of this stack; the fork uses an atomic JSON snapshot in the `room_data` named volume.
 
 The container uses UID 1000. File-backed Compose secrets inherit host ownership and permissions; make the private host-key file readable by that UID. A root-owned file can use a group readable by the container, without making it world-readable. Rootless Podman uses different UID mapping; when testing with Podman secrets, set `uid=1000,mode=0400` on the secret mount. Compose secrets are file mounts, not automatic encryption at rest.
