@@ -179,13 +179,19 @@ local function controls()
     local held = {}
     handObjects(function(object) held[object.getGUID()] = true end)
     local function snaps(owner, prefix)
-        for index, snap in ipairs(owner.getSnapPoints() or {}) do
+        -- Optional controls must not stop private sync on limited TTS APIs.
+        if type(owner.getSnapPoints) ~= 'function' then return end
+        local ok, points = pcall(owner.getSnapPoints)
+        if not ok then return end
+        for index, snap in ipairs(points or {}) do
             if index <= 999 and #targets < 100 then
-                local label
+                -- TTS's MoonSharp runtime can retain a reused loop-local slot
+                -- after a declaration without an initializer. Reset each snap.
+                local label = nil
                 for _, tag in ipairs(snap.tags or {}) do
                     if tag:sub(1, 14) == 'AmbulatorDrop:' then label = tag:sub(15):gsub('[%c]', ' '):sub(1, 120) end
                 end
-                if label and label:match('%S') then
+                if type(label) == 'string' and label:match('%S') then
                     local position = prefix == 'global' and snap.position or owner.positionToWorld(snap.position)
                     local yaw = (snap.rotation and snap.rotation.y or 0) + (prefix == 'global' and 0 or owner.getRotation().y)
                     local colors = controlColors(snap.tags)
@@ -202,14 +208,14 @@ local function controls()
         local guid = object.getGUID()
         if not privateObjects[guid] and not transientObjects[guid] and not held[guid] then
             snaps(object, guid)
-            if not object.hasTag('AmbulatorHideButtons') then
+            if type(object.hasTag) == 'function' and type(object.getTags) == 'function' and type(object.getButtons) == 'function' and not object.hasTag('AmbulatorHideButtons') then
                 local colors = controlColors(object.getTags())
                 for _, button in ipairs(object.getButtons() or {}) do
                     if #buttons < 100 and button.index <= 999 and (button.width or 0) > 0 and (button.height or 0) > 0 and button.label and button.label:match('%S') and button.click_function and button.click_function:match('^[%a_][%w_]*$') then
                         local owner = button.function_owner or Global
                         local ownerId = owner == Global and 'global' or owner.getGUID()
                         local label = button.label:gsub('[%c]', ' '):sub(1, 120)
-                        local ready = type(owner.getVar('ambulatorPressButton')) == 'function'
+                        local ready = type(owner.getVar) == 'function' and type(owner.getVar('ambulatorPressButton')) == 'function'
                         local id = guid .. ':' .. button.index
                         local signature = ownerId .. ':' .. button.click_function .. ':' .. label .. ':' .. table.concat(colors, ',') .. ':' .. tostring(ready)
                         local metadata = { id = id, label = label, signature = signature, colors = colors, ready = ready }

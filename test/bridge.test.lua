@@ -81,6 +81,31 @@ local function permissions(commands)
     return { commands = commands or {}, seats = { 'Red' }, zones = { ['1'] = { play = true }, ['2'] = { play = false } }, enabledDecks = { d00002 = 2 } }
 end
 
+-- Normal native object scripts can expose fewer optional APIs than editor
+-- executeScript commands. Missing control methods must not stop private sync.
+local limited = fixture()
+limited.env.Global.getSnapPoints = nil
+local unsupported = limited.card('e00009', 'Unsupported public object', 'BlockSquare')
+unsupported.getSnapPoints = nil; unsupported.getButtons = nil
+unsupported.hasTag = nil; unsupported.getTags = nil
+limited.respond(permissions()); limited.advance()
+local limitedSnapshot = limited.requests[#limited.requests].data
+equal(#limitedSnapshot.hands.Red[1].cards, 1)
+equal(#limitedSnapshot.hands.Red[2].cards, 1)
+equal(#limitedSnapshot.targets, 0)
+equal(#limitedSnapshot.buttons, 0)
+
+local mixedSnaps = fixture()
+mixedSnaps.env.Global.getSnapPoints = function() return {
+    { position = { x = 0, y = 1, z = 30 }, tags = { 'AmbulatorDrop:Return tickets' } },
+    { position = { x = 5, y = 1, z = 30 }, tags = {} },
+    { position = { x = 10, y = 1, z = 30 } }
+} end
+mixedSnaps.respond(permissions()); mixedSnaps.advance()
+local mixedTargets = mixedSnaps.requests[#mixedSnaps.requests].data.targets
+equal(#mixedTargets, 1, 'Unlabelled snap points cannot inherit a previous label')
+equal(mixedTargets[1].id, 'global:1')
+
 local f = fixture()
 equal(#f.requests, 2)
 equal(f.requests[1].headers.Authorization, 'Bearer __TOKEN__')

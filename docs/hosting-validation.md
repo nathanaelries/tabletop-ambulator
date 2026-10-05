@@ -13,4 +13,12 @@ Checks completed:
 
 The domain's authoritative DNS and fresh public resolvers returned the edge addresses. The workstation's upstream resolver retained an earlier negative result during verification, so acceptance clients used fresh public DNS or the confirmed edge addresses while retaining normal hostname/certificate checks. This did not disable TLS verification or change system DNS settings.
 
-These checks exercise the hosted application with a simulated TTS bridge. They do not establish a native TTS-to-Hetzner connection, physical-phone compatibility, a complete game, or native correctness of the new batch/return/button controls. Those remain separate acceptance work. Backups, disaster recovery, and replacement of the companion during upgrades also remain to be checked.
+Native TTS acceptance was also completed on October 5, 2026 with TTS 14.2.2 on Linux and the Ticket to Ride – Scripted + Expansions workshop table (2754116876):
+
+- The native companion connected over authenticated HTTPS to the edge deployment and discovered separate train/ticket hands and the two live decks. The workstation resolver had refreshed; no hosts-file entry was needed.
+- Two headless phone browsers at 390/360px joined and requested Red/Blue seats. Neither received cards before host approval. Native phone actions then dealt four train cards into hand 1 and three tickets into hand 2 for each seat. Actual mod artwork loaded in each private phone view; ticket face-up play stayed disabled.
+- Real HTTP and WSS views included each player's own card identities and excluded the other player's identities. The host desk received counts only. Temporary players were removed after testing, leaving the prepared hands available for real players.
+- Native clients remained Grey. All 14 dealt cards were recorded under the companion's privacy guard with hover previews disabled, and visual inspection of the shared board showed no private hands.
+- The test exposed a MoonSharp runtime issue with an uninitialized loop-local label during snap discovery. Explicitly resetting it to nil and checking its type restored syncing. Optional control APIs are also guarded; regression checks cover unavailable APIs and mixed labelled/unlabelled snaps.
+
+Physical-phone compatibility, a complete game, and native correctness of the new batch/return/button controls remain separate acceptance work. Backups and disaster recovery also remain to be checked. Private room objects and table saves are kept locally and are not included in the repository.
